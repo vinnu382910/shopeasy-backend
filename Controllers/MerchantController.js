@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Merchant = require('../Models/merchantDb'); // Make sure this path is correct
 require('dotenv').config();
