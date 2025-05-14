@@ -1,7 +1,10 @@
 const Product = require("../Models/Product");
 const Merchant = require('../Models/merchantDb');
+const imageService = require('../services/imageService');
 
 const addProduct = async (req, res) => {
+  let rollbackImages = [];
+  
   try {
     // 1. Extract product data from request body
     const {
@@ -27,7 +30,11 @@ const addProduct = async (req, res) => {
       isFeatured = false
     } = req.body;
 
-    // 2. Get merchant ID from authenticated user (ensure your auth middleware sets this)
+    // Track images for potential rollback
+    if (imageUrl) rollbackImages.push(imageUrl);
+    if (images?.length) rollbackImages = [...rollbackImages, ...images];
+
+    // 2. Get merchant ID from authenticated user
     if (!req.merchant || !req.merchant._id) {
       return res.status(401).json({
         success: false,
@@ -78,13 +85,13 @@ const addProduct = async (req, res) => {
       deliveryTime: deliveryTime?.trim() || '',
       specifications: typeof specifications === 'object' ? specifications : {},
       isFeatured: Boolean(isFeatured),
-      merchantId // This is now properly defined
+      merchantId
     });
 
     // 6. Save product to database
     const savedProduct = await newProduct.save();
 
-    // 7. Update merchant's product count (optional)
+    // 7. Update merchant's product count
     try {
       await Merchant.findByIdAndUpdate(
         merchantId,
@@ -105,7 +112,17 @@ const addProduct = async (req, res) => {
   } catch (err) {
     console.error("Error adding product:", err);
     
-    // Handle different error types appropriately
+    // Rollback uploaded images if product creation failed
+    if (rollbackImages.length > 0) {
+      try {
+        await imageService.deleteMultiple(rollbackImages);
+        console.log('Rollback: Deleted uploaded images');
+      } catch (rollbackErr) {
+        console.error('Error during image rollback:', rollbackErr);
+      }
+    }
+
+    // Handle different error types
     let statusCode = 500;
     let errorMessage = 'Internal server error';
     
@@ -125,26 +142,42 @@ const addProduct = async (req, res) => {
   }
 };
 
-// Update Product (Only product owner)
 const updateProduct = async (req, res) => {
   const { id } = req.params;
   const merchantId = req.merchant._id;
+  let imagesToDelete = [];
 
   try {
     const product = await Product.findById(id);
     if (!product) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({ success: false, message: "Product not found" });
     }
 
     if (product.merchantId.toString() !== merchantId.toString()) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized: Cannot update this product" });
+      return res.status(403).json({ 
+        success: false,
+        message: "Unauthorized: Cannot update this product" 
+      });
     }
 
     const updates = req.body;
 
-    // Handle new fields
+    // Handle image updates
+    if (updates.imageUrl !== undefined || updates.images !== undefined) {
+      // Track old images for deletion if they're being replaced
+      if (updates.imageUrl && product.imageUrl && updates.imageUrl !== product.imageUrl) {
+        imagesToDelete.push(product.imageUrl);
+      }
+      
+      if (updates.images) {
+        // Determine which old images are no longer in the new list
+        const newImages = Array.isArray(updates.images) ? updates.images : [];
+        const imagesToKeep = newImages.filter(img => product.images.includes(img));
+        imagesToDelete = [...imagesToDelete, ...product.images.filter(img => !imagesToKeep.includes(img))];
+      }
+    }
+
+    // Handle other fields
     if (updates.images !== undefined) {
       updates.images = Array.isArray(updates.images) ? updates.images : [];
     }
@@ -189,43 +222,97 @@ const updateProduct = async (req, res) => {
       { new: true, runValidators: true }
     );
 
+    // Delete old images after successful update
+    if (imagesToDelete.length > 0) {
+      try {
+        await imageService.deleteMultiple(imagesToDelete);
+      } catch (deleteErr) {
+        console.error('Error deleting old images:', deleteErr);
+      }
+    }
+
     return res.status(200).json({
+      success: true,
       message: "Product updated successfully",
       product: updatedProduct,
     });
   } catch (err) {
     console.error("Error updating product:", err);
     return res.status(500).json({ 
+      success: false,
       message: "Internal server error.",
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
 
-// Delete Product (Only product owner)
 const deleteProduct = async (req, res) => {
   const { id } = req.params;
   const merchantId = req.merchant._id;
 
   try {
     const product = await Product.findById(id);
-
-    if (!product) return res.status(404).json({ message: "Product not found" });
-
-    if (product.merchantId.toString() !== merchantId.toString()) {
-      return res.status(403).json({ message: "Unauthorized: Cannot delete this product" });
+    if (!product) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Product not found" 
+      });
     }
 
+    if (product.merchantId.toString() !== merchantId.toString()) {
+      return res.status(403).json({ 
+        success: false,
+        message: "Unauthorized: Cannot delete this product" 
+      });
+    }
+
+    // Delete associated images first
+    try {
+      const imagesToDelete = [];
+      if (product.imageUrl) imagesToDelete.push(product.imageUrl);
+      if (product.images?.length) imagesToDelete.push(...product.images);
+      
+      if (imagesToDelete.length > 0) {
+        await imageService.deleteMultiple(imagesToDelete);
+      }
+    } catch (imageErr) {
+      console.error("Error deleting product images:", imageErr);
+      // Continue with product deletion even if image deletion fails
+    }
+
+    // Delete the product
     await Product.findByIdAndDelete(id);
-    res.status(200).json({ message: "Product deleted successfully" });
+
+    // Update merchant's product count
+    try {
+      await Merchant.findByIdAndUpdate(
+        merchantId,
+        { $inc: { productCount: -1 } },
+        { new: true }
+      );
+    } catch (updateError) {
+      console.warn("Could not update merchant product count:", updateError);
+    }
+
+    res.status(200).json({ 
+      success: true,
+      message: "Product and associated images deleted successfully" 
+    });
   } catch (err) {
+    console.error("Error deleting product:", err);
+    let statusCode = 500;
     let message = "Server error";
 
     if (err.name === "CastError") {
-      message = "Invalid product ID format.";
+      statusCode = 400;
+      message = "Invalid product ID format";
     }
 
-    res.status(500).json({ message });
+    res.status(statusCode).json({ 
+      success: false,
+      message,
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
