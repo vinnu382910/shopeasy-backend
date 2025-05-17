@@ -4,6 +4,7 @@
 ![Express](https://img.shields.io/badge/Express-4.x-blue)
 ![MongoDB](https://img.shields.io/badge/MongoDB-4.x-green)
 ![Cloudinary](https://img.shields.io/badge/Cloudinary-API-orange)
+![React](https://img.shields.io/badge/React-18.x-blue)
 
 A robust backend API for ShopEasy eCommerce platform built with Node.js, Express, MongoDB, and Cloudinary for image storage.
 
@@ -15,6 +16,14 @@ A robust backend API for ShopEasy eCommerce platform built with Node.js, Express
 - **Wishlist**: Save favorite products for later
 - **Order Processing**: Complete order lifecycle management (**We will add this feature soon**)
 - **Profile Management**: User and merchant profile updates
+
+## Live Demo
+
+The frontend React application is deployed and available at:  
+🔗 [https://shopeasy-frontend-ecru.vercel.app/](https://shopeasy-frontend-ecru.vercel.app/)
+
+Frontend GitHub Repository:  
+📦 [https://github.com/vinnu382910/shopeasy-frontend](https://github.com/vinnu382910/shopeasy-frontend)
 
 ## API Documentation
 
@@ -158,6 +167,14 @@ All product images are automatically uploaded to Cloudinary when merchants add n
 3. Uploads to Cloudinary with optimized settings
 4. Stores the secure URLs in MongoDB
 
+## Frontend Integration
+
+This backend API powers the ShopEasy React frontend application. The frontend:
+- Uses Axios for API calls
+- Implements JWT authentication flow
+- Handles all product, cart, and order operations
+- Displays Cloudinary-hosted product images
+
 ## Environment Variables
 
 Create a `.env` file with the following variables:
@@ -176,7 +193,7 @@ CLOUDINARY_API_SECRET=your_cloudinary_secret
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/vinnu382910/shopeasy-backend
+git clone https://github.com/vinnu382910/shopeasy-backend.git
 cd backend
 ```
 
@@ -205,7 +222,17 @@ npm start
 - **JWT**: JSON Web Tokens for authentication
 - **Multer**: File upload middleware
 - **Bcrypt**: Password hashing
-- **Validator**: Input validation
+- **Joi**:  To validate data
+- **Dotenv**: To manage configuration settings
+- **React**: Frontend framework (used in the companion frontend app)
+
+## Full Stack Architecture
+
+```
+Frontend (React) → Backend (Node.js/Express) → MongoDB
+                     ↑
+                Cloudinary (Image Storage)
+```
 
 ## Contributing
 
@@ -215,18 +242,3 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 [MIT](https://choosealicense.com/licenses/mit/)
 ```
-
-This README provides comprehensive documentation for your eCommerce backend, including:
-- API endpoints organized by functionality
-- Database schemas
-- Authentication details
-- Cloudinary integration information
-- Setup instructions
-- Technology stack
-
-You can customize it further with:
-- Deployment instructions
-- API usage examples
-- Testing guidelines
-- Contact information
-- Screenshots of API responses (if available)
